@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แอปจัดการแผนงานโปรเจกต์</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Frappe Gantt Library -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.css">
+    <script src="https://cdn.jsdelivr.net/npm/frappe-gantt@0.6.1/dist/frappe-gantt.min.js"></script>
+
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background-color: #f0f2f5;
+        }
+        .kanban-column { min-height: 400px; }
+        .task-card, .project-card { cursor: pointer; transition: all 0.2s ease-in-out; }
+        .task-card:hover, .project-card:hover { transform: translateY(-2px); box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
+        .task-card { cursor: move; }
+        .task-card.dragging { opacity: 0.5; transform: rotate(3deg); }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.5); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 24px; border: 1px solid #888; width: 90%; max-width: 500px; border-radius: 12px; }
+        .nav-link.active { background-color: #4f46e5; color: white; }
+        .gemini-btn { background-color: #f3e8ff; color: #6d28d9; padding: 2px 8px; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; border: 1px solid #c4b5fd; transition: all 0.2s; }
+        .gemini-btn:hover { background-color: #e9d5ff; }
+        .gemini-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        
+        /* New Tab Styles */
+        .project-view-tabs {
+            border-bottom: 2px solid #e5e7eb;
+        }
+        .project-view-btn {
+            padding: 0.75rem 0.25rem;
+            margin-bottom: -2px;
+            font-weight: 600;
+            color: #6b7280;
+            border-bottom: 4px solid transparent;
+            transition: all 0.2s ease-in-out;
+        }
+        .project-view-btn:hover {
+            color: #374151;
+            border-bottom-color: #d1d5db;
+        }
+        .project-view-btn.active {
+            color: #4f46e5;
+            border-bottom-color: #4f46e5;
+        }
+        
+        #gantt-chart, #master-gantt-chart { overflow: auto; }
+        .gantt .bar-label { font-weight: 500; fill: #333 !important; }
+        .gantt .bar-progress { fill: #4f46e5 !important; }
+        .bar-todo .bar { fill: #3b82f6 !important; }
+        .bar-inprogress .bar { fill: #f59e0b !important; }
+        .bar-done .bar { fill: #10b981 !important; }
+        #loading-overlay { position: fixed; inset: 0; background-color: rgba(255, 255, 255, 0.8); z-index: 9999; display: flex; align-items: center; justify-content: center; transition: opacity 0.3s; pointer-events: none; opacity: 0;}
+        
+        /* Gantt Chart Highlights */
+        .gantt .grid-header, .gantt .grid-row {
+            z-index: 1; 
+        }
+        .grid-background {
+            z-index: 0;
+        }
+        .gantt .today-highlight {
+            fill: #dcfce7; /* Tailwind green-100 */
+            opacity: 0.9;
+        }
+        .grid-sunday-highlight {
+            fill: #fecaca; /* Tailwind red-200 */
+        }
+        .day-name-label {
+            font-size: 10px;
+            fill: #6b7280; /* gray-500 */
+        }
+        .day-name-label-sunday {
+            fill: #ef4444; /* red-500 */
+        }
+
+    </style>
+</head>
+<body class="antialiased text-gray-800">
+
+    <div id="loading-overlay">
+        <div class="text-center">
+            <svg class="animate-spin h-10 w-10 text-indigo-600 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+            <p class="mt-4 text-lg font-semibold text-gray-700">กำลังโหลดข้อมูล...</p>
+        </div>
+    </div>
+
+    <div class="flex h-screen bg-gray-100">
+        <!-- Sidebar Navigation -->
+        <aside class="w-64 bg-white shadow-md flex flex-col">
+            <div class="p-6 border-b">
+                <h1 class="text-2xl font-bold text-indigo-600">ProjectFlow</h1>
+                <p class="text-sm text-gray-500">เมนูการจัดการ</p>
+            </div>
+            <nav id="main-nav" class="flex-1 px-4 py-4 space-y-2">
+                 <a href="#" data-view="dashboard" class="nav-link active flex items-center px-4 py-2 text-gray-700 rounded-lg hover:bg-indigo-500 hover:text-white">
+                    <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    ภาพรวม (Dashboard)
+                </a>
+                <a href="#" data-view="timeline" class="nav-link flex items-center px-4 py-2 text-gray-700 rounded-lg hover:bg-indigo-500 hover:text-white">
+                    <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                    ภาพรวม Timeline
+                </a>
+                <a href="#" data-view="projects" class="nav-link flex items-center px-4 py-2 text-gray-700 rounded-lg hover:bg-indigo-500 hover:text-white">
+                     <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                    โปรเจกต์ (Projects)
+                </a>
+                <a href="#" data-view="team" class="nav-link flex items-center px-4 py-2 text-gray-700 rounded-lg hover:bg-indigo-500 hover:text-white">
+                    <svg class="w-6 h-6 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                    ทีม (Team)
+                </a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 p-6 lg:p-10 overflow-y-auto">
+            <div id="dashboard-view" class="app-view"></div>
+            <div id="timeline-view" class="app-view hidden"></div>
+            <div id="projects-view" class="app-view hidden"></div>
+            <div id="plan-view" class="app-view hidden"></div>
+            <div id="team-view" class="app-view hidden"></div>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <div id="project-modal" class="modal"></div>
+    <div id="task-modal" class="modal"></div>
+    <div id="member-modal" class="modal"></div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    
+    // --- IMPORTANT SETUP ---
+    const GOOGLE_SHEET_API_URL = "https://script.google.com/macros/s/AKfycbzq_u5cDAA0KNDBwYL80-SoWN2ExDLpRAcVFlJgo6AKGZvOmZ8-guugXoIeoz-AgUB9Ww/exec";
+
+    // --- Initial HTML for Views and Modals ---
+    // Dashboard
+    document.getElementById('dashboard-view').innerHTML = `<h2 class="text-3xl font-bold mb-6">ภาพรวมโปรเจกต์</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">งานทั้งหมด</h3><p id="total-tasks" class="text-3xl font-bold">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">ยังไม่เริ่ม</h3><p id="todo-tasks" class="text-3xl font-bold text-blue-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">กำลังทำ</h3><p id="inprogress-tasks" class="text-3xl font-bold text-yellow-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">เสร็จสิ้น</h3><p id="done-tasks" class="text-3xl font-bold text-green-500">0</p></div></div><div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">สรุปสถานะงาน</h3><div id="task-chart-container"></div></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">งานที่ใกล้ถึงกำหนด</h3><ul id="upcoming-tasks-list" class="space-y-3"></ul></div></div>`;
+    // Timeline
+    document.getElementById('timeline-view').innerHTML = `<h2 class="text-3xl font-bold mb-6">ภาพรวมไทม์ไลน์ทุกโปรเจกต์</h2><div class="bg-white p-4 rounded-lg shadow overflow-x-auto"><svg id="master-gantt-chart"></svg></div>`;
+    // Projects
+    document.getElementById('projects-view').innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">โปรเจกต์ทั้งหมด</h2><button id="add-project-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">+ สร้างโปรเจกต์ใหม่</button></div><div id="project-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>`;
+    // Plan
+    document.getElementById('plan-view').innerHTML = `<div class="flex justify-between items-center mb-6"><div><button id="back-to-projects-btn" class="text-indigo-600 hover:underline mb-2 flex items-center"><svg class="w-5 h-5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>กลับไปรายการโปรเจกต์</button><h2 id="plan-view-title" class="text-3xl font-bold"></h2></div><button id="add-task-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">+ เพิ่มงานใหม่</button></div><div class="mb-6 flex space-x-8 project-view-tabs"><button data-project-view="kanban" class="project-view-btn active">Kanban</button><button data-project-view="gantt" class="project-view-btn">Gantt Chart</button></div><div id="kanban-container"><div class="grid grid-cols-1 md:grid-cols-3 gap-6"><div class="bg-white rounded-lg shadow"><h3 class="text-lg font-bold p-4 border-b text-blue-600">งานที่ต้องทำ (To Do)</h3><div id="todo" class="p-4 space-y-4 kanban-column" data-status="todo"></div></div><div class="bg-white rounded-lg shadow"><h3 class="text-lg font-bold p-4 border-b text-yellow-600">กำลังดำเนินการ (In Progress)</h3><div id="inprogress" class="p-4 space-y-4 kanban-column" data-status="inprogress"></div></div><div class="bg-white rounded-lg shadow"><h3 class="text-lg font-bold p-4 border-b text-green-600">เสร็จสิ้น (Done)</h3><div id="done" class="p-4 space-y-4 kanban-column" data-status="done"></div></div></div></div><div id="gantt-container" class="hidden bg-white p-4 rounded-lg shadow overflow-x-auto"><svg id="gantt-chart"></svg></div>`;
+    // Team
+    document.getElementById('team-view').innerHTML = `<div class="flex justify-between items-center mb-6"><h2 class="text-3xl font-bold">จัดการทีม</h2><button id="add-member-btn" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700 transition">+ เพิ่มสมาชิก</button></div><div id="team-list" class="bg-white rounded-lg shadow overflow-hidden"></div>`;
+    // Modals
+    document.getElementById('project-modal').innerHTML = `<div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 id="project-modal-title" class="text-2xl font-bold">สร้างโปรเจกต์ใหม่</h3><button id="close-project-modal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button></div><form id="project-form"><input type="hidden" id="project-id"><div class="mb-4"><label for="project-name" class="block text-sm font-medium text-gray-700">ชื่อโปรเจกต์</label><input type="text" id="project-name" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required></div><div class="mb-6"><label for="project-desc" class="block text-sm font-medium text-gray-700">คำอธิบายสั้นๆ</label><textarea id="project-desc" rows="3" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></textarea></div><div class="flex justify-end"><button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">บันทึกโปรเจกต์</button></div></form></div>`;
+    document.getElementById('task-modal').innerHTML = `<div class="modal-content animate-fade-in-down"><div class="flex justify-between items-center mb-4"><h3 id="modal-title" class="text-2xl font-bold">เพิ่มงานใหม่</h3><button id="close-task-modal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button></div><form id="task-form"><input type="hidden" id="task-id"><div class="mb-4"><label for="task-title" class="block text-sm font-medium text-gray-700">ชื่องาน</label><input type="text" id="task-title" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required></div><div class="mb-4"><div class="flex justify-between items-center"><label for="task-desc" class="block text-sm font-medium text-gray-700">รายละเอียด</label><button type="button" id="generate-desc-btn" class="gemini-btn">✨ ช่วยคิด</button></div><textarea id="task-desc" rows="4" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" placeholder="กรอกชื่องานแล้วกด 'ช่วยคิด' เพื่อให้ AI สร้างรายละเอียด..."></textarea></div><div class="mb-4"><label for="task-assignee" class="block text-sm font-medium text-gray-700">ผู้รับผิดชอบ</label><select id="task-assignee" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"></select></div><div class="grid grid-cols-2 gap-4 mb-6"><div><label for="task-start-date" class="block text-sm font-medium text-gray-700">วันที่เริ่มต้น</label><input type="date" id="task-start-date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required></div><div><label for="task-due-date" class="block text-sm font-medium text-gray-700">วันที่สิ้นสุด</label><input type="date" id="task-due-date" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required></div></div><div class="flex justify-end space-x-3"><button type="button" id="delete-task-btn" class="bg-red-500 text-white px-4 py-2 rounded-lg font-semibold hover:bg-red-600 hidden">ลบ</button><button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">บันทึก</button></div></form></div>`;
+    document.getElementById('member-modal').innerHTML = `<div class="modal-content"><div class="flex justify-between items-center mb-4"><h3 id="member-modal-title" class="text-2xl font-bold">เพิ่มสมาชิกใหม่</h3><button id="close-member-modal" class="text-gray-500 hover:text-gray-800 text-2xl">&times;</button></div><form id="member-form"><input type="hidden" id="member-id"><div class="mb-4"><label for="member-name" class="block text-sm font-medium text-gray-700">ชื่อ-สกุล</label><input type="text" id="member-name" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required></div><div class="mb-4"><label for="member-role" class="block text-sm font-medium text-gray-700">หน้าที่</label><select id="member-role" class="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500" required><option>Project Manager</option><option>Developer</option><option>Designer</option><option>Tester</option></select></div><div class="mb-6"><label class="block text-sm font-medium text-gray-700">รูปโปรไฟล์</label><div class="mt-2 flex items-center space-x-4"><img id="avatar-preview" class="w-16 h-16 rounded-full object-cover bg-gray-200" src="https://placehold.co/100x100/CCCCCC/FFFFFF?text=?"><label for="member-avatar-upload" class="cursor-pointer bg-white py-2 px-3 border border-gray-300 rounded-md shadow-sm text-sm leading-4 font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"><span>อัปโหลดรูป</span><input id="member-avatar-upload" name="avatar" type="file" class="sr-only" accept="image/png, image/jpeg, image/gif"></label><input type="hidden" id="member-avatar-base64"></div><p class="text-xs text-gray-500 mt-1">แนะนำ: รูปสี่เหลี่ยมจัตุรัส, ขนาดไม่เกิน 200KB</p></div><div class="flex justify-end"><button type="submit" class="bg-indigo-600 text-white px-4 py-2 rounded-lg font-semibold hover:bg-indigo-700">บันทึก</button></div></form></div>`;
+    
+    // --- State Management ---
+    let state = {
+        users: [],
+        projects: [],
+        tasks: [],
+        currentView: 'dashboard',
+        currentProjectView: 'kanban',
+        selectedProjectId: null,
+        editingTaskId: null,
+        ganttChart: null,
+        masterGanttChart: null,
+    };
+
+    const loadingOverlay = document.getElementById('loading-overlay');
+
+    // --- Data Fetching and Updating ---
+    
+    async function showLoading(isFetching) {
+        loadingOverlay.style.opacity = isFetching ? '1' : '0';
+        loadingOverlay.style.pointerEvents = isFetching ? 'auto' : 'none';
+    }
+    
+    async function postData(payload) {
+        if (GOOGLE_SHEET_API_URL === "YOUR_DEPLOYED_WEB_APP_URL_HERE") {
+            console.error("Google Sheet API URL is not set. Aborting postData.");
+            return { status: 'error', message: 'API URL not configured.' };
+        }
+        try {
+            // This is a "fire and forget" request. We don't wait for the response to keep the UI fast.
+            fetch(GOOGLE_SHEET_API_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                cache: 'no-cache',
+                redirect: 'follow',
+                body: JSON.stringify(payload),
+                headers: {
+                  'Content-Type': 'text/plain;charset=utf-8',
+                }
+            });
+            return { status: 'success' };
+        } catch (error) {
+            console.error('Error posting data:', error);
+            alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล!');
+            return { status: 'error' };
+        }
+    }
+
+    function loadSampleData() {
+        console.warn("Loading sample data because fetch failed.");
+        state.users = [
+            { id: 1, name: 'สมชาย ใจดี', role: 'Project Manager', avatar: 'https://placehold.co/100x100/4F46E5/FFFFFF?text=สช' },
+            { id: 2, name: 'มานี รักเรียน', role: 'Developer', avatar: 'https://placehold.co/100x100/10B981/FFFFFF?text=มน' },
+            { id: 3, name: 'ปิติ ชูใจ', role: 'Designer', avatar: 'https://placehold.co/100x100/F59E0B/FFFFFF?text=ปต' },
+        ];
+        state.projects = [
+            { id: 1, name: 'ตัวอย่าง: Mobile Banking App', description: 'โปรเจกต์สำหรับแอป Mobile Banking' },
+            { id: 2, name: 'ตัวอย่าง: เว็บไซต์ E-commerce', description: 'ปรับปรุงเว็บ E-commerce' },
+        ];
+        state.tasks = [
+            { id: 1, projectId: 1, title: 'ออกแบบ UI/UX', assigneeId: 3, status: 'done', startDate: '2025-09-01', dueDate: '2025-09-10' },
+            { id: 2, projectId: 1, title: 'พัฒนาระบบ Login', assigneeId: 2, status: 'inprogress', startDate: '2025-09-11', dueDate: '2025-09-20' },
+            { id: 3, projectId: 2, title: 'วางแผน Sprint', assigneeId: 1, status: 'todo', startDate: '2025-09-05', dueDate: '2025-09-08' },
+        ];
+    }
+
+    function parseData(data) {
+        state.projects = (data.projects || []).map(p => ({...p, id: Number(p.id)}));
+        state.tasks = (data.tasks || []).map(t => ({
+            ...t,
+            id: Number(t.id),
+            projectId: Number(t.projectId),
+            assigneeId: t.assigneeId ? Number(t.assigneeId) : null
+        }));
+        state.users = (data.users || []).map(u => ({...u, id: Number(u.id)}));
+    }
+    
+    async function initializeApp() {
+        await showLoading(true);
+        if (GOOGLE_SHEET_API_URL === "YOUR_DEPLOYED_WEB_APP_URL_HERE" || !GOOGLE_SHEET_API_URL.includes("/exec")) {
+             console.warn("Google Sheet API URL is not configured correctly. Loading sample data.");
+             alert("กรุณาใส่ URL ของ Google Apps Script Web App (เวอร์ชัน /exec) ที่ถูกต้อง (ตอนนี้จะแสดงข้อมูลตัวอย่างแทน)");
+             loadSampleData();
+             switchView('dashboard');
+             await showLoading(false);
+             return;
+        }
+
+        try {
+            const response = await fetch(`${GOOGLE_SHEET_API_URL}?action=getAllData`);
+            if (!response.ok) {
+                throw new Error(`Network response was not ok: ${response.statusText}`);
+            }
+            const data = await response.json();
+            parseData(data);
+        } catch (error) {
+            console.error("Error fetching initial data:", error);
+            alert("ไม่สามารถโหลดข้อมูลจาก Google Sheet ได้ กำลังแสดงข้อมูลตัวอย่างแทน กรุณาตรวจสอบ Console (F12) สำหรับรายละเอียด");
+            console.error("Please check the following:\n1. The Google Apps Script is deployed with 'Who has access' set to 'Anyone'.\n2. The URL in the GOOGLE_SHEET_API_URL variable is correct.");
+            loadSampleData();
+        } finally {
+            switchView('dashboard');
+            await showLoading(false);
+        }
+    }
+
+    // --- Helper Functions ---
+    const getNewId = (array) => (array.length > 0 ? Math.max(...array.map(item => Number(item.id))) + 1 : 1);
+    const getUserById = (id) => state.users.find(u => u.id === id);
+    const getTaskById = (id) => state.tasks.find(t => t.id === id);
+    const getProjectById = (id) => state.projects.find(p => p.id === id);
+    const formatDateForInput = (date) => {
+        const d = new Date(date);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    
+    // --- Gemini API Function ---
+    async function generateTaskDescription(taskTitle) {
+        const apiKey = ""; // Leave as-is
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+        const systemPrompt = "You are an expert project manager. Your task is to write a clear, concise, and actionable task description in Thai based on the provided task title. The description should be suitable for a project management tool. Do not add any formatting like markdown headers or bullet points, just plain text.";
+        const userQuery = `Task Title: "${taskTitle}"`;
+        const payload = { contents: [{ parts: [{ text: userQuery }] }], systemInstruction: { parts: [{ text: systemPrompt }] } };
+        try {
+            const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+            if (!response.ok) throw new Error(`API call failed with status: ${response.status}`);
+            const result = await response.json();
+            const candidate = result.candidates?.[0];
+            if (candidate && candidate.content?.parts?.[0]?.text) return candidate.content.parts[0].text.trim();
+            return "ไม่สามารถสร้างรายละเอียดได้ โปรดลองอีกครั้ง";
+        } catch (error) {
+            console.error("Error calling Gemini API:", error);
+            return "เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI";
+        }
+    }
+
+    // --- RENDER FUNCTIONS ---
+    function renderAll() {
+        const currentScroll = { x: window.scrollX, y: window.scrollY };
+        switch(state.currentView) {
+            case 'dashboard': renderDashboardView(); break;
+            case 'timeline': renderTimelineView(); break;
+            case 'projects': renderProjectsView(); break;
+            case 'plan': renderPlanView(); break;
+            case 'team': renderTeamView(); break;
+        }
+        updateAssigneeOptions();
+        window.scrollTo(currentScroll.x, currentScroll.y);
+    }
+    
+    function renderDashboardView() {
+        const totalTasks = state.tasks.length;
+        const todoTasks = state.tasks.filter(t => t.status === 'todo').length;
+        const inprogressTasks = state.tasks.filter(t => t.status === 'inprogress').length;
+        const doneTasks = state.tasks.filter(t => t.status === 'done').length;
+
+        document.getElementById('total-tasks').textContent = totalTasks;
+        document.getElementById('todo-tasks').textContent = todoTasks;
+        document.getElementById('inprogress-tasks').textContent = inprogressTasks;
+        document.getElementById('done-tasks').textContent = doneTasks;
+        
+        const chartContainer = document.getElementById('task-chart-container');
+        const chartData = [
+            { label: 'ยังไม่เริ่ม', value: todoTasks, color: '#3b82f6' },
+            { label: 'กำลังทำ', value: inprogressTasks, color: '#f59e0b' },
+            { label: 'เสร็จสิ้น', value: doneTasks, color: '#10b981' },
+        ];
+        
+        let chartHTML = '<div class="flex flex-wrap gap-4 items-center justify-center">';
+        chartData.forEach(item => {
+            const percentage = totalTasks > 0 ? ((item.value / totalTasks) * 100).toFixed(1) : 0;
+            chartHTML += `
+                <div class="text-center">
+                    <div class="w-24 h-24 rounded-full flex items-center justify-center text-xl font-bold" style="background: conic-gradient(${item.color} ${percentage}%, #e5e7eb 0)">
+                       <span class="bg-white w-20 h-20 rounded-full flex items-center justify-center">${percentage}%</span>
+                    </div>
+                    <p class="mt-2 text-sm font-medium">${item.label} (${item.value})</p>
+                </div>`;
+        });
+        chartHTML += '</div>';
+        chartContainer.innerHTML = chartHTML;
+
+        const upcomingList = document.getElementById('upcoming-tasks-list');
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const next7days = new Date(today);
+        next7days.setDate(today.getDate() + 7);
+        const upcomingTasks = state.tasks.filter(task => { const dueDate = new Date(task.dueDate); return task.status !== 'done' && dueDate >= today && dueDate <= next7days; }).sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+        if (upcomingTasks.length === 0) {
+            upcomingList.innerHTML = `<li class="text-gray-500 text-center py-4">ไม่มีงานที่ใกล้ถึงกำหนด</li>`;
+        } else {
+            upcomingList.innerHTML = upcomingTasks.map(task => {
+                const user = getUserById(task.assigneeId);
+                const dueDate = new Date(task.dueDate);
+                const isOverdue = dueDate < today && task.status !== 'done';
+                return `<li class="flex items-center justify-between"><div><p class="font-semibold">${task.title}</p><p class="text-sm text-gray-500">${user ? user.name : 'ยังไม่ระบุ'} - <span class="${isOverdue ? 'text-red-500 font-bold' : ''}">${dueDate.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</span></p></div><div class="w-4 h-4 rounded-full ${task.status === 'todo' ? 'bg-blue-500' : 'bg-yellow-500'}"></div></li>`;
+            }).join('');
+        }
+    }
+    
+    function highlightGanttDays(gantt) {
+        if (!gantt || !gantt.gantt) return;
+        
+        setTimeout(() => {
+            const gridEl = gantt.gantt.querySelector('.grid');
+            if (!gridEl) return;
+
+            // Remove old highlights and day names
+            gridEl.querySelectorAll('.grid-sunday-highlight, .day-name-label').forEach(el => el.remove());
+            
+            const viewMode = gantt.options.view_mode;
+            if (viewMode !== 'Day' && viewMode !== 'Week' && viewMode !== 'Half Day' && viewMode !== 'Quarter Day') {
+                return;
+            }
+
+            const headerEl = gantt.gantt.querySelector('.grid-header');
+            const columnWidth = gantt.options.column_width;
+            const thDays = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'];
+
+            gantt.dates.forEach((date, i) => {
+                const isSunday = date.getDay() === 0;
+
+                // Highlight Sundays
+                if (isSunday) {
+                    const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+                    rect.setAttribute('x', i * columnWidth);
+                    rect.setAttribute('y', 0);
+                    rect.setAttribute('width', columnWidth);
+                    rect.setAttribute('height', '100%');
+                    rect.setAttribute('class', 'grid-sunday-highlight');
+                    gridEl.insertBefore(rect, gridEl.firstChild);
+                }
+
+                // Add Day Names
+                const dayName = thDays[date.getDay()];
+                const textEl = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                textEl.textContent = dayName;
+                textEl.setAttribute('x', (i * columnWidth) + (columnWidth / 2));
+                textEl.setAttribute('y', gantt.options.header_height - 25);
+                textEl.setAttribute('text-anchor', 'middle');
+                textEl.setAttribute('class', `day-name-label ${isSunday ? 'day-name-label-sunday' : ''}`);
+                headerEl.appendChild(textEl);
+            });
+        }, 100);
+    }
+    
+    function renderTimelineView() {
+        const ganttContainer = document.getElementById('master-gantt-chart');
+        ganttContainer.innerHTML = '';
+
+        const ganttProjects = state.projects.map(project => {
+            const projectTasks = state.tasks.filter(t => t.projectId === project.id);
+            if (projectTasks.length === 0) return null;
+
+            const startDates = projectTasks.map(t => new Date(t.startDate));
+            const dueDates = projectTasks.map(t => new Date(t.dueDate));
+            const minStartDate = new Date(Math.min.apply(null, startDates));
+            const maxDueDate = new Date(Math.max.apply(null, dueDates));
+            
+            const doneTasks = projectTasks.filter(t => t.status === 'done').length;
+            const progress = projectTasks.length > 0 ? (doneTasks / projectTasks.length) * 100 : 0;
+
+            return {
+                id: `proj_${project.id}`,
+                name: project.name,
+                start: formatDateForInput(minStartDate),
+                end: formatDateForInput(maxDueDate),
+                progress: progress.toFixed(0),
+            };
+        }).filter(p => p !== null);
+
+        if (ganttProjects.length === 0) {
+            ganttContainer.innerHTML = '<p class="text-gray-500 text-center p-8">ไม่มีข้อมูลโปรเจกต์สำหรับแสดงผล</p>';
+            return;
+        }
+
+        state.masterGanttChart = new Gantt("#master-gantt-chart", ganttProjects, {
+             header_height: 65,
+             bar_height: 30,
+             padding: 20,
+             view_mode: 'Month',
+             on_click: function (project) {
+                const projectId = parseInt(project.id.replace('proj_', ''));
+                state.selectedProjectId = projectId;
+                switchView('plan');
+            },
+            on_view_change: function(mode) {
+                highlightGanttDays(state.masterGanttChart);
+            }
+        });
+        highlightGanttDays(state.masterGanttChart);
+    }
+
+    function renderProjectsView() {
+        const projectList = document.getElementById('project-list');
+        projectList.innerHTML = '';
+        if (state.projects.length === 0) {
+            projectList.innerHTML = `<p class="text-gray-500 col-span-3 text-center">ยังไม่มีโปรเจกต์ ลองสร้างโปรเจกต์แรกของคุณ!</p>`;
+            return;
+        }
+        state.projects.forEach(project => {
+            const projectTasks = state.tasks.filter(t => t.projectId === project.id);
+            const doneTasks = projectTasks.filter(t => t.status === 'done').length;
+            const totalTasks = projectTasks.length;
+            const progress = totalTasks > 0 ? (doneTasks / totalTasks) * 100 : 0;
+            const card = document.createElement('div');
+            card.className = 'project-card bg-white p-6 rounded-lg shadow';
+            card.dataset.projectId = project.id;
+            card.innerHTML = `<h3 class="font-bold text-xl mb-2 text-indigo-700">${project.name}</h3><p class="text-gray-600 mb-4 h-12 overflow-hidden">${project.description}</p><div class="mb-2"><div class="flex justify-between text-sm text-gray-500 mb-1"><span>ความคืบหน้า</span><span>${doneTasks} / ${totalTasks} งาน</span></div><div class="w-full bg-gray-200 rounded-full h-2.5"><div class="bg-green-500 h-2.5 rounded-full" style="width: ${progress}%"></div></div></div>`;
+            card.addEventListener('click', () => { state.selectedProjectId = project.id; switchView('plan'); });
+            projectList.appendChild(card);
+        });
+    }
+
+    function renderPlanView() {
+        if (!state.selectedProjectId) { switchView('projects'); return; }
+        const project = getProjectById(state.selectedProjectId);
+        if (!project) {
+             console.error("Could not find project with ID:", state.selectedProjectId);
+             alert("ไม่พบโปรเจกต์ที่เลือก");
+             switchView('projects');
+             return;
+        }
+        document.getElementById('plan-view-title').textContent = project.name;
+        
+        if (state.currentProjectView === 'kanban') {
+            document.getElementById('kanban-container').classList.remove('hidden');
+            document.getElementById('gantt-container').classList.add('hidden');
+            renderKanbanBoard();
+        } else {
+            document.getElementById('kanban-container').classList.add('hidden');
+            document.getElementById('gantt-container').classList.remove('hidden');
+            renderGanttChart();
+        }
+    }
+
+    function renderKanbanBoard() {
+        const tasksForProject = state.tasks.filter(task => task.projectId === state.selectedProjectId);
+        const columns = { todo: document.getElementById('todo'), inprogress: document.getElementById('inprogress'), done: document.getElementById('done') };
+        Object.values(columns).forEach(col => col.innerHTML = '');
+        tasksForProject.forEach(task => {
+            const user = getUserById(task.assigneeId);
+            const taskCard = document.createElement('div');
+            taskCard.className = 'task-card bg-gray-50 p-4 rounded-lg border shadow-sm';
+            taskCard.setAttribute('draggable', true);
+            taskCard.dataset.taskId = task.id;
+            const dueDate = new Date(task.dueDate);
+            const today = new Date(); today.setHours(0,0,0,0);
+            const isOverdue = dueDate < today && task.status !== 'done';
+            taskCard.innerHTML = `<h4 class="font-bold">${task.title}</h4><p class="text-sm text-gray-600 my-2">${task.description}</p><div class="flex justify-between items-center text-sm mt-3"><span class="px-2 py-1 rounded-full text-xs font-semibold ${isOverdue ? 'bg-red-100 text-red-800' : 'bg-gray-200 text-gray-800'}">${isOverdue ? 'เลยกำหนด' : ''} ${dueDate.toLocaleDateString('th-TH')}</span>${user ? `<img src="${user.avatar}" class="w-8 h-8 rounded-full" title="${user.name}">` : `<div class="w-8 h-8 rounded-full bg-gray-300 flex items-center justify-center text-xs" title="ยังไม่ระบุ">?</div>`}</div>`;
+            taskCard.addEventListener('click', () => openTaskModal(task.id));
+            columns[task.status].appendChild(taskCard);
+        });
+        setupDragAndDrop();
+    }
+
+    function renderGanttChart() {
+        const ganttContainer = document.getElementById('gantt-chart');
+        ganttContainer.innerHTML = ''; 
+        const tasksForProject = state.tasks.filter(task => task.projectId === state.selectedProjectId);
+        
+        if (tasksForProject.length === 0) {
+            ganttContainer.innerHTML = '<p class="text-gray-500 text-center p-8">ไม่มีงานในโปรเจกต์นี้</p>';
+            return;
+        }
+
+        const ganttTasks = tasksForProject.map(task => ({
+            id: String(task.id),
+            name: task.title,
+            start: task.startDate,
+            end: task.dueDate,
+            progress: task.status === 'done' ? 100 : (task.status === 'inprogress' ? 30 : 0),
+            custom_class: 'bar-' + task.status,
+        }));
+
+        state.ganttChart = new Gantt("#gantt-chart", ganttTasks, {
+            header_height: 65,
+            on_date_change: (task, start, end) => handleGanttDateChange(task, start, end),
+            on_click: (task) => openTaskModal(parseInt(task.id)),
+            on_view_change: function(mode) {
+                highlightGanttDays(state.ganttChart);
+            }
+        });
+        highlightGanttDays(state.ganttChart);
+    }
+    
+    function renderTeamView() {
+        const teamList = document.getElementById('team-list');
+        teamList.innerHTML = '';
+        state.users.forEach(user => {
+            const tasksCount = state.tasks.filter(task => task.assigneeId === user.id).length;
+            const userElement = document.createElement('div');
+            userElement.className = 'flex items-center justify-between p-4 border-b last:border-b-0';
+            userElement.innerHTML = `
+                <div class="flex items-center">
+                    <img src="${user.avatar}" class="w-12 h-12 rounded-full mr-4 object-cover" onerror="this.src='https://placehold.co/100x100/CCCCCC/FFFFFF?text=??'; this.onerror=null;">
+                    <div>
+                        <p class="font-bold text-lg">${user.name}</p>
+                        <p class="text-gray-500">${user.role}</p>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                     <div>
+                        <span class="text-gray-600 font-medium">งานที่รับผิดชอบ: </span>
+                        <span class="text-indigo-600 font-bold text-lg">${tasksCount}</span>
+                    </div>
+                    <button data-user-id="${user.id}" class="edit-member-btn text-gray-400 hover:text-indigo-600 p-1">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"></path></svg>
+                    </button>
+                </div>
+            `;
+            teamList.appendChild(userElement);
+        });
+    }
+
+    function updateAssigneeOptions() {
+        const assigneeSelect = document.getElementById('task-assignee');
+        assigneeSelect.innerHTML = '<option value="">-- ไม่ระบุ --</option>';
+        state.users.forEach(user => {
+            const option = document.createElement('option');
+            option.value = user.id;
+            option.textContent = user.name;
+            assigneeSelect.appendChild(option);
+        });
+    }
+
+    // --- VIEW SWITCHING ---
+    function switchView(viewName) {
+        state.currentView = viewName;
+        document.querySelectorAll('.app-view').forEach(view => view.classList.add('hidden'));
+        document.getElementById(`${viewName}-view`).classList.remove('hidden');
+        document.querySelectorAll('.nav-link').forEach(link => link.classList.toggle('active', link.dataset.view === viewName));
+        renderAll();
+    }
+    
+    function switchProjectView(projectViewName) {
+        state.currentProjectView = projectViewName;
+        document.querySelectorAll('.project-view-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.projectView === projectViewName);
+        });
+        renderPlanView();
+    }
+    
+    // --- MODAL LOGIC & EVENT HANDLERS ---
+    function openProjectModal() { document.getElementById('project-form').reset(); document.getElementById('project-modal-title').textContent = 'สร้างโปรเจกต์ใหม่'; projectModal.style.display = 'block'; }
+    function closeProjectModal() { projectModal.style.display = 'none'; }
+    function openTaskModal(taskId = null) {
+        document.getElementById('task-form').reset();
+        state.editingTaskId = taskId;
+        const modalTitle = document.getElementById('modal-title');
+        const deleteBtn = document.getElementById('delete-task-btn');
+        if (taskId) {
+            modalTitle.textContent = 'แก้ไขงาน';
+            deleteBtn.classList.remove('hidden');
+            const task = getTaskById(taskId);
+            document.getElementById('task-id').value = task.id;
+            document.getElementById('task-title').value = task.title;
+            document.getElementById('task-desc').value = task.description;
+            document.getElementById('task-assignee').value = task.assigneeId;
+            document.getElementById('task-start-date').value = task.startDate;
+            document.getElementById('task-due-date').value = task.dueDate;
+        } else {
+            modalTitle.textContent = 'เพิ่มงานใหม่';
+            deleteBtn.classList.add('hidden');
+        }
+        taskModal.style.display = 'block';
+    }
+    function closeTaskModal() { taskModal.style.display = 'none'; state.editingTaskId = null; }
+    
+    function openMemberModal(userId = null) {
+        const form = document.getElementById('member-form');
+        form.reset();
+        const modalTitle = document.getElementById('member-modal-title');
+        const memberIdInput = document.getElementById('member-id');
+        const avatarPreview = document.getElementById('avatar-preview');
+        const avatarBase64Input = document.getElementById('member-avatar-base64');
+        const avatarUploadInput = document.getElementById('member-avatar-upload');
+
+        avatarUploadInput.value = null; // Clear the file input
+
+        if (userId) {
+            modalTitle.textContent = 'แก้ไขข้อมูลสมาชิก';
+            const user = state.users.find(u => u.id === userId);
+            if (user) {
+                memberIdInput.value = user.id;
+                document.getElementById('member-name').value = user.name;
+                document.getElementById('member-role').value = user.role;
+                avatarPreview.src = user.avatar;
+                avatarBase64Input.value = user.avatar;
+            }
+        } else {
+            modalTitle.textContent = 'เพิ่มสมาชิกใหม่';
+            memberIdInput.value = '';
+            avatarPreview.src = 'https://placehold.co/100x100/CCCCCC/FFFFFF?text=?';
+            avatarBase64Input.value = '';
+        }
+        memberModal.style.display = 'block';
+    }
+
+    function closeMemberModal() { memberModal.style.display = 'none'; }
+
+    async function handleGanttDateChange(task, start, end) {
+        const taskId = parseInt(task.id);
+        const taskToUpdate = getTaskById(taskId);
+        if (taskToUpdate) {
+            const endDate = new Date(end);
+            endDate.setDate(endDate.getDate() - 1);
+            
+            taskToUpdate.startDate = formatDateForInput(start);
+            taskToUpdate.dueDate = formatDateForInput(endDate);
+            
+            renderAll();
+            await postData({ action: 'updateTask', data: taskToUpdate });
+        }
+    }
+
+    let draggedItem = null;
+    function setupDragAndDrop() {
+        const taskCards = document.querySelectorAll('.task-card');
+        const columns = document.querySelectorAll('.kanban-column');
+        taskCards.forEach(card => {
+            card.addEventListener('dragstart', () => { draggedItem = card; setTimeout(() => card.classList.add('dragging'), 0); });
+            card.addEventListener('dragend', () => { draggedItem.classList.remove('dragging'); draggedItem = null; });
+        });
+        columns.forEach(column => {
+            column.addEventListener('dragover', e => e.preventDefault());
+            column.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                if (draggedItem) {
+                    const taskId = parseInt(draggedItem.dataset.taskId);
+                    const newStatus = column.dataset.status;
+                    const task = getTaskById(taskId);
+                    if (task && task.status !== newStatus) {
+                         column.appendChild(draggedItem);
+                        task.status = newStatus;
+                        renderAll();
+                        await postData({ action: 'updateTask', data: task });
+                    }
+                }
+            });
+        });
+    }
+
+    // --- INITIAL SETUP & EVENT LISTENERS ---
+    const mainNav = document.getElementById('main-nav');
+    const projectModal = document.getElementById('project-modal');
+    const taskModal = document.getElementById('task-modal');
+    const memberModal = document.getElementById('member-modal');
+
+    document.querySelectorAll('.project-view-btn').forEach(btn => btn.addEventListener('click', () => switchProjectView(btn.dataset.projectView)));
+    mainNav.addEventListener('click', (e) => { const link = e.target.closest('.nav-link'); if (link) { e.preventDefault(); switchView(link.dataset.view); } });
+    document.getElementById('add-project-btn').addEventListener('click', openProjectModal);
+    document.getElementById('close-project-modal').addEventListener('click', closeProjectModal);
+    document.getElementById('project-form').addEventListener('submit', handleProjectFormSubmit);
+    document.getElementById('back-to-projects-btn').addEventListener('click', () => { state.selectedProjectId = null; switchView('projects'); });
+    document.getElementById('add-task-btn').addEventListener('click', () => openTaskModal());
+    document.getElementById('close-task-modal').addEventListener('click', closeTaskModal);
+    document.getElementById('task-form').addEventListener('submit', handleTaskFormSubmit);
+    document.getElementById('delete-task-btn').addEventListener('click', handleDeleteTask);
+    document.getElementById('generate-desc-btn').addEventListener('click', handleGenerateDesc);
+    document.getElementById('add-member-btn').addEventListener('click', () => openMemberModal());
+    document.getElementById('close-member-modal').addEventListener('click', closeMemberModal);
+    document.getElementById('member-form').addEventListener('submit', handleMemberFormSubmit);
+    
+    document.getElementById('team-list').addEventListener('click', (e) => {
+        const editBtn = e.target.closest('.edit-member-btn');
+        if (editBtn) {
+            const userId = Number(editBtn.dataset.userId);
+            openMemberModal(userId);
+        }
+    });
+
+    document.getElementById('member-avatar-upload').addEventListener('change', handleAvatarUpload);
+
+    window.addEventListener('click', (event) => {
+        if (event.target == projectModal) closeProjectModal();
+        if (event.target == taskModal) closeTaskModal();
+        if (event.target == memberModal) closeMemberModal();
+    });
+    
+    // --- Add event handlers dynamically after creating them ---
+    async function handleProjectFormSubmit(e) {
+        e.preventDefault();
+        const name = document.getElementById('project-name').value;
+        const description = document.getElementById('project-desc').value;
+        const newId = getNewId(state.projects);
+        const projectData = { id: newId, name, description };
+        
+        state.projects.push(projectData);
+        renderAll();
+        closeProjectModal();
+
+        await postData({ action: 'addProject', data: projectData });
+    }
+    
+    async function handleTaskFormSubmit(e) {
+        e.preventDefault();
+        const title = document.getElementById('task-title').value;
+        const description = document.getElementById('task-desc').value;
+        const assigneeId = document.getElementById('task-assignee').value ? Number(document.getElementById('task-assignee').value) : null;
+        const startDate = document.getElementById('task-start-date').value;
+        const dueDate = document.getElementById('task-due-date').value;
+        if (new Date(startDate) > new Date(dueDate)) { alert("วันที่เริ่มต้นต้องมาก่อนวันที่สิ้นสุด"); return; }
+        
+        let payload;
+        if (state.editingTaskId) {
+            const task = getTaskById(state.editingTaskId);
+            Object.assign(task, { title, description, assigneeId, startDate, dueDate });
+            payload = { action: 'updateTask', data: task };
+        } else {
+            const newId = getNewId(state.tasks);
+            const newTask = { id: newId, projectId: state.selectedProjectId, title, description, assigneeId, status: 'todo', startDate, dueDate };
+            state.tasks.push(newTask);
+            payload = { action: 'addTask', data: newTask };
+        }
+        
+        renderAll();
+        closeTaskModal();
+        await postData(payload);
+    }
+
+    async function handleDeleteTask() {
+        if (confirm('คุณแน่ใจหรือไม่ว่าต้องการลบงานนี้?')) {
+            const taskId = state.editingTaskId;
+            state.tasks = state.tasks.filter(t => t.id !== taskId);
+            renderAll();
+            closeTaskModal();
+            await postData({ action: 'deleteTask', data: { id: taskId } });
+        }
+    }
+    
+    async function handleMemberFormSubmit(e) {
+        e.preventDefault();
+        const memberId = document.getElementById('member-id').value ? Number(document.getElementById('member-id').value) : null;
+        const name = document.getElementById('member-name').value;
+        const role = document.getElementById('member-role').value;
+        let avatar = document.getElementById('member-avatar-base64').value.trim();
+
+        if (!avatar) {
+            const firstLetters = name.split(' ').map(n => n[0]).join('');
+            avatar = `https://placehold.co/100x100/7C3AED/FFFFFF?text=${encodeURIComponent(firstLetters)}`;
+        }
+
+        let payload;
+        if (memberId) {
+            const user = getUserById(memberId);
+            Object.assign(user, {name, role, avatar});
+            payload = { action: 'updateMember', data: user };
+        } else {
+            const newId = getNewId(state.users);
+            const memberData = { id: newId, name, role, avatar };
+            state.users.push(memberData);
+            payload = { action: 'addMember', data: memberData };
+        }
+        
+        renderAll();
+        closeMemberModal();
+        await postData(payload);
+    }
+
+    function handleAvatarUpload(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        if (file.size > 200 * 1024) { // Limit to 200KB for initial check
+            alert("ไฟล์รูปภาพมีขนาดใหญ่เกินไป (สูงสุด 200KB)");
+            event.target.value = null;
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                const canvas = document.createElement('canvas');
+                const MAX_WIDTH = 128;
+                const MAX_HEIGHT = 128;
+                let width = img.width;
+                let height = img.height;
+
+                if (width > height) {
+                    if (width > MAX_WIDTH) {
+                        height *= MAX_WIDTH / width;
+                        width = MAX_WIDTH;
+                    }
+                } else {
+                    if (height > MAX_HEIGHT) {
+                        width *= MAX_HEIGHT / height;
+                        height = MAX_HEIGHT;
+                    }
+                }
+                
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Use a lower quality for jpeg to ensure the base64 string is small enough
+                const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+
+                if (dataUrl.length > 45000) { 
+                    alert("เกิดข้อผิดพลาด: รูปภาพหลังการบีบอัดยังมีขนาดใหญ่เกินไป โปรดเลือกรูปอื่น");
+                    return;
+                }
+
+                document.getElementById('avatar-preview').src = dataUrl;
+                document.getElementById('member-avatar-base64').value = dataUrl;
+            }
+            img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+
+    async function handleGenerateDesc() { const taskTitleInput = document.getElementById('task-title'); const taskDescTextarea = document.getElementById('task-desc'); const generateDescBtn = document.getElementById('generate-desc-btn'); const title = taskTitleInput.value.trim(); if (!title) { taskDescTextarea.placeholder = "โปรดกรอกชื่องานก่อน..."; return; } generateDescBtn.disabled = true; generateDescBtn.innerHTML = `<svg class="animate-spin h-4 w-4 mr-1 inline-block" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>กำลังคิด...`; taskDescTextarea.value = "AI กำลังเขียนรายละเอียดให้คุณ..."; const description = await generateTaskDescription(title); taskDescTextarea.value = description; generateDescBtn.disabled = false; generateDescBtn.innerHTML = "✨ ช่วยคิด"; }
+
+    // Initial Load
+    (async () => {
+        await initializeApp();
+    })();
+
+});
+</script>
+
+</body>
+</html>
+
