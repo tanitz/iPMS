@@ -5,7 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial HTML for Views and Modals ---
     // Dashboard
-    document.getElementById('dashboard-view').innerHTML = `<h2 class="text-3xl font-bold mb-6">ภาพรวมโปรเจกต์</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">งานทั้งหมด</h3><p id="total-tasks" class="text-3xl font-bold">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">ยังไม่เริ่ม</h3><p id="todo-tasks" class="text-3xl font-bold text-blue-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">กำลังทำ</h3><p id="inprogress-tasks" class="text-3xl font-bold text-yellow-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">เสร็จสิ้น</h3><p id="done-tasks" class="text-3xl font-bold text-green-500">0</p></div></div><div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">สรุปสถานะงาน</h3><div id="task-chart-container"></div></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">งานที่ใกล้ถึงกำหนด</h3><ul id="upcoming-tasks-list" class="space-y-3"></ul></div></div>`;
+    document.getElementById('dashboard-view').innerHTML = `<h2 class="text-3xl font-bold mb-6">ภาพรวมโปรเจกต์</h2><div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">งานทั้งหมด</h3><p id="total-tasks" class="text-3xl font-bold">0</p></div><div class="bg-white p-6 rounded-lg shadow"><p id="inprogress-tasks" class="text-3xl font-bold text-yellow-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">เสร็จสิ้น</h3><p id="todo-tasks" class="text-3xl font-bold text-blue-500">0</p></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-gray-500 text-sm font-medium">กำลังทำ</h3><h3 class="text-gray-500 text-sm font-medium">ยังไม่เริ่ม</h3><p id="done-tasks" class="text-3xl font-bold text-green-500">0</p></div></div><div class="grid grid-cols-1 lg:grid-cols-3 gap-8"><div class="lg:col-span-2 bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">สรุปสถานะงาน</h3><div id="task-chart-container"></div></div><div class="bg-white p-6 rounded-lg shadow"><h3 class="text-lg font-semibold mb-4">งานที่ใกล้ถึงกำหนด</h3><ul id="upcoming-tasks-list" class="space-y-3"></ul></div></div>`;
     // Timeline
     document.getElementById('timeline-view').innerHTML = `<h2 class="text-3xl font-bold mb-6">ภาพรวมไทม์ไลน์ทุกโปรเจกต์</h2><div class="bg-white p-4 rounded-lg shadow overflow-x-auto"><svg id="master-gantt-chart"></svg></div>`;
     // Projects
@@ -249,9 +249,11 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const chartContainer = document.getElementById('task-chart-container');
         const chartData = [
-            { label: 'ยังไม่เริ่ม', value: todoTasks, color: '#3b82f6' },
-            { label: 'กำลังทำ', value: inprogressTasks, color: '#f59e0b' },
             { label: 'เสร็จสิ้น', value: doneTasks, color: '#10b981' },
+            { label: 'กำลังทำ', value: inprogressTasks, color: '#f59e0b' },
+            { label: 'ยังไม่เริ่ม', value: todoTasks, color: '#3b82f6' },
+            
+           
         ];
         
         // Use the duration-weighted percent in the summary area (no separate labeled block)
@@ -698,7 +700,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- VIEW SWITCHING ---
-    async function switchView(viewName, fetchData = true) {
+    async function switchView(viewName, fetchData = false) {
         if (state.currentView === viewName && !fetchData) {
              renderAll();
              return;
@@ -882,7 +884,7 @@ document.addEventListener('DOMContentLoaded', () => {
             taskToUpdate.dueDate = formatDateForInput(endDate);
             
             renderAll();
-            await postData({ action: 'updateTask', data: taskToUpdate });
+            postData({ action: 'updateTask', data: taskToUpdate });
         }
     }
 
@@ -895,7 +897,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 taskToUpdate.progress = newProgress;
                 taskToUpdate.status = newProgress >= 100 ? 'done' : (newProgress > 0 ? 'inprogress' : 'todo');
                 renderAll(); // Re-render to reflect changes everywhere
-                await postData({ action: 'updateTask', data: taskToUpdate });
+                postData({ action: 'updateTask', data: taskToUpdate });
             }
         }
     }
@@ -928,7 +930,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         
                         renderAll();
-                        await postData({ action: 'updateTask', data: task });
+                        postData({ action: 'updateTask', data: task });
                     }
                 }
             });
@@ -1032,10 +1034,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
 
-            if (updates.length > 0) {
+                if (updates.length > 0) {
                 renderListView(); 
                 for (const task of updates) {
-                    await postData({ action: 'updateTask', data: task });
+                    postData({ action: 'updateTask', data: task });
                 }
             }
         });
@@ -1192,7 +1194,7 @@ document.addEventListener('DOMContentLoaded', () => {
         renderAll();
         closeProjectModal();
         if (payload) {
-            await postData(payload);
+            postData(payload);
         }
     }
 
@@ -1216,7 +1218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderAll();
             }
 
-            await postData({ action: 'deleteProject', data: { id: projectId } });
+            postData({ action: 'deleteProject', data: { id: projectId } });
         });
     }
     
@@ -1247,9 +1249,9 @@ document.addEventListener('DOMContentLoaded', () => {
             payload = { action: 'addTask', data: newTask };
         }
         
-        renderAll();
-        closeTaskModal();
-        await postData(payload);
+    renderAll();
+    closeTaskModal();
+    postData(payload);
     }
 
     async function handleDeleteTask() {
@@ -1263,7 +1265,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.tasks = state.tasks.filter(t => t.id !== taskId);
             renderAll();
             closeTaskModal();
-            await postData({ action: 'deleteTask', data: { id: taskId } });
+            postData({ action: 'deleteTask', data: { id: taskId } });
         });
     }
     
@@ -1291,9 +1293,9 @@ document.addEventListener('DOMContentLoaded', () => {
             payload = { action: 'addMember', data: memberData };
         }
         
-        renderAll();
-        closeMemberModal();
-        await postData(payload);
+    renderAll();
+    closeMemberModal();
+    postData(payload);
     }
 
     function handleProjectIconUpload(event) {
