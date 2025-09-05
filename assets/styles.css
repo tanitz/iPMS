@@ -1,0 +1,262 @@
+body {
+    font-family: "Kanit", sans-serif;
+    background-color: #f0f2f5;
+}
+
+.kanban-column {
+    min-height: 400px;
+}
+
+.task-card,
+.project-card {
+    transition: all 0.2s ease-in-out;
+}
+
+.project-card {
+    cursor: pointer;
+}
+
+.task-card:hover,
+.project-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1),
+        0 4px 6px -2px rgba(0, 0, 0, 0.05);
+}
+
+.task-card {
+    cursor: move;
+}
+
+.task-card.dragging {
+    opacity: 0.5;
+    transform: rotate(3deg);
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    background-color: rgba(0, 0, 0, 0.5);
+}
+
+.modal-content {
+    background-color: #fefefe;
+    margin: 5% auto;
+    padding: 24px;
+    border: 1px solid #888;
+    width: 90%;
+    max-width: 500px;
+    border-radius: 12px;
+}
+
+.nav-link.active {
+    background-color: #4f46e5;
+    color: white;
+}
+
+.gemini-btn {
+    background-color: #f3e8ff;
+    color: #6d28d9;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid #c4b5fd;
+    transition: all 0.2s;
+}
+
+.gemini-btn:hover {
+    background-color: #e9d5ff;
+}
+
+.gemini-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* New Tab Styles */
+.project-view-tabs {
+    border-bottom: 2px solid #e5e7eb;
+}
+
+.project-view-btn {
+    padding: 0.75rem 0.25rem;
+    margin-bottom: -2px;
+    font-weight: 600;
+    color: #6b7280;
+    border-bottom: 4px solid transparent;
+    transition: all 0.2s ease-in-out;
+}
+
+.project-view-btn:hover {
+    color: #374151;
+    border-bottom-color: #d1d5db;
+}
+
+.project-view-btn.active {
+    color: #4f46e5;
+    border-bottom-color: #4f46e5;
+}
+
+#gantt-chart,
+#master-gantt-chart {
+    overflow: auto;
+}
+
+.gantt .bar-label {
+    font-weight: 500;
+    fill: #333 !important;
+}
+
+.gantt .bar-progress {
+    fill: #4f46e5 !important;
+}
+
+.bar-todo .bar {
+    fill: #3b82f6 !important;
+}
+
+.bar-inprogress .bar {
+    fill: #f59e0b !important;
+}
+
+.bar-done .bar {
+    fill: #10b981 !important;
+}
+
+#loading-overlay {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.8);
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: opacity 0.3s;
+    pointer-events: none;
+    opacity: 0;
+}
+
+/* Gantt Chart Highlights */
+.gantt .grid-header,
+.gantt .grid-row {
+    z-index: 1;
+}
+
+.grid-background {
+    z-index: 0;
+}
+
+.gantt .today-highlight {
+    fill: #dcfce7;
+    /* Tailwind green-100 */
+    opacity: 0.9;
+}
+
+.grid-sunday-highlight {
+    fill: #fecaca;
+    /* Tailwind red-200 */
+}
+
+.day-name-label {
+    font-size: 10px;
+    fill: #6b7280;
+    /* gray-500 */
+}
+
+.day-name-label-sunday,
+.gantt .grid-header .lower-text.day-name-label-sunday {
+    fill: #ef4444 !important;
+    /* red-500 */
+}
+
+/* List View Drag Drop Styles */
+.task-row {
+    cursor: grab;
+}
+
+.task-row.dragging {
+    opacity: 0.5;
+    background: #f0f2f5;
+}
+
+.task-row.drag-over-top {
+    border-top: 2px solid #4f46e5;
+}
+
+.task-row.drag-over-bottom {
+    border-bottom: 2px solid #4f46e5;
+}
+
+/* Color Picker */
+.color-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 3px solid transparent;
+    transition: all 0.2s;
+}
+
+.color-dot:hover {
+    transform: scale(1.1);
+}
+
+.color-dot.selected,
+.color-dot-wrapper.selected {
+    border-color: #ffffff;
+    outline: 2px solid #4f46e5;
+    box-shadow: 0 0 0 2px #4f46e5;
+}
+
+.color-dot-wrapper {
+    border-radius: 50%;
+    border: 3px solid transparent;
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+input[type="color"] {
+    -webkit-appearance: none;
+    width: 28px;
+    height: 28px;
+    border: none;
+    padding: 0;
+    border-radius: 50%;
+    cursor: pointer;
+}
+
+input[type="color"]::-webkit-color-swatch-wrapper {
+    padding: 0;
+}
+
+input[type="color"]::-webkit-color-swatch {
+    border: 1px solid #e5e7eb;
+    border-radius: 50%;
+}
+
+.project-icon-preview {
+    width: 4rem;
+    /* w-16 */
+    height: 4rem;
+    /* h-16 */
+    border-radius: 0.75rem;
+    /* rounded-xl */
+    object-fit: cover;
+    background-color: #e5e7eb;
+    /* bg-gray-200 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.875rem;
+    /* text-3xl */
+    overflow: hidden;
+}
